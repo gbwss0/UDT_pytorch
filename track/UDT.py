@@ -34,12 +34,12 @@ class TrackerConfig(object):
     net_average_image = np.array([104, 117, 123]).reshape(-1, 1, 1).astype(np.float32)
     output_sigma = crop_sz / (1 + padding) * output_sigma_factor
     y = gaussian_shaped_labels(output_sigma, net_input_size)
-    yf = torch.rfft(torch.Tensor(y).view(1, 1, crop_sz, crop_sz).cuda(), signal_ndim=2)
-    cos_window = torch.Tensor(np.outer(np.hanning(crop_sz), np.hanning(crop_sz))).cuda()
+    yf = torch.rfft(torch.Tensor(y).view(1, 1, crop_sz, crop_sz), signal_ndim=2)
+    cos_window = torch.Tensor(np.outer(np.hanning(crop_sz), np.hanning(crop_sz)))
 
 
 class DCFNetTraker(object):
-    def __init__(self, im, init_rect, config=TrackerConfig(), gpu=True):
+    def __init__(self, im, init_rect, config=TrackerConfig(), gpu=False):
         self.gpu = gpu
         self.config = config
         self.net = DCFNet(config)
@@ -111,16 +111,17 @@ if __name__ == '__main__':
     base_path = join('dataset', dataset)
     json_path = join('dataset', dataset + '.json')
     annos = json.load(open(json_path, 'r'))
+    #print(annos)
     videos = sorted(annos.keys())
 
-    use_gpu = True
+    use_gpu = False
     visualization = False
 
     # default parameter and load feature extractor network
     config = TrackerConfig()
     net = DCFNet(config)
     net.load_param(args.model)
-    net.eval().cuda()
+    net.eval()#.cuda()
 
     speed = []
     # loop videos
@@ -128,6 +129,9 @@ if __name__ == '__main__':
         video_path_name = annos[video]['name']
         init_rect = np.array(annos[video]['init_rect']).astype(np.float)
         image_files = [join(base_path, video_path_name, 'img', im_f) for im_f in annos[video]['image_files']]
+        #print(image_files)
+        #print(annos[video])
+
         n_images = len(image_files)
 
         tic = time.time()  # time start
@@ -139,6 +143,7 @@ if __name__ == '__main__':
         # confine results
         min_sz = np.maximum(config.min_scale_factor * target_sz, 4)
         max_sz = np.minimum(im.shape[:2], config.max_scale_factor * target_sz)
+        #max_sz = np.maximum(config.min_scale_factor * target_sz, 4)
 
         # crop template
         window_sz = target_sz * (1 + config.padding)
@@ -146,7 +151,8 @@ if __name__ == '__main__':
         patch = crop_chw(im, bbox, config.crop_sz)
 
         target = patch - config.net_average_image
-        net.update(torch.Tensor(np.expand_dims(target, axis=0)).cuda())
+        net.update(torch.Tensor(np.expand_dims(target, axis=0)))
+        #net.update(torch.Tensor(np.expand_dims(target, axis=0)).cuda())
 
         res = [cxy_wh_2_rect1(target_pos, target_sz)]  # save in .txt
         patch_crop = np.zeros((config.num_scale, patch.shape[0], patch.shape[1], patch.shape[2]), np.float32)
@@ -159,7 +165,8 @@ if __name__ == '__main__':
                 patch_crop[i, :] = crop_chw(im, bbox, config.crop_sz)
 
             search = patch_crop - config.net_average_image
-            response = net(torch.Tensor(search).cuda())
+            response = net(torch.Tensor(search))
+            #response = net(torch.Tensor(search).cuda())
             peak, idx = torch.max(response.view(config.num_scale, -1), 1)
             peak = peak.data.cpu().numpy() * config.scale_penalties
             best_scale = np.argmax(peak)
@@ -179,7 +186,8 @@ if __name__ == '__main__':
             bbox = cxy_wh_2_bbox(target_pos, window_sz)
             patch = crop_chw(im, bbox, config.crop_sz)
             target = patch - config.net_average_image
-            net.update(torch.Tensor(np.expand_dims(target, axis=0)).cuda(), lr=config.interp_factor)
+            net.update(torch.Tensor(np.expand_dims(target, axis=0)), lr=config.interp_factor)
+            #net.update(torch.Tensor(np.expand_dims(target, axis=0)).cuda(), lr=config.interp_factor)
 
             res.append(cxy_wh_2_rect1(target_pos, target_sz))  # 1-index
 

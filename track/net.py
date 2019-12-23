@@ -61,7 +61,7 @@ class DCFNet(nn.Module):
             self.model_zf = (1 - lr) * self.model_zf.data + lr * zf.data
 
     def load_param(self, path='param.pth'):
-        checkpoint = torch.load(path)
+        checkpoint = torch.load(path, map_location='cpu')
         if 'state_dict' in checkpoint.keys():  # from training result
             state_dict = checkpoint['state_dict'] 
             if 'module' in state_dict.keys()[0]:  # train with nn.DataParallel
@@ -125,5 +125,3 @@ if __name__ == '__main__':
 
 
     print('model_transfer_error:{:.5f}'.format(pred_error))
-
-
